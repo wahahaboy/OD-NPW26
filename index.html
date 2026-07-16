@@ -688,7 +688,7 @@ function renderDay(dayIdx){
   if(travelMarker){ map.removeLayer(travelMarker); travelMarker = null; }
   updatePreview(0);
 
-  loadRoadRoute(stops, dayIdx, ++currentRequestId);
+  applyRouteToMap(dayIdx, ++currentRequestId);
 }
 
 function updatePreview(i){
@@ -740,12 +740,20 @@ function ensureTravelMarker(){
   return travelMarker;
 }
 
-function animateAlongRoute(fromIdx, toIdx, duration){
-  if(!currentRouteLatLngs || fromIdx == null || toIdx == null || fromIdx === toIdx) return;
-  const path = fromIdx < toIdx
-    ? currentRouteLatLngs.slice(fromIdx, toIdx + 1)
-    : currentRouteLatLngs.slice(toIdx, fromIdx + 1).reverse();
-  if(path.length < 2) return;
+function getTravelPath(prevIdx, toIdx){
+  if(!currentRouteLatLngs || !stopRouteIdx.length) return null;
+  const fromRouteIdx = stopRouteIdx[prevIdx];
+  const toRouteIdx = stopRouteIdx[toIdx];
+  if(fromRouteIdx == null || toRouteIdx == null || fromRouteIdx === toRouteIdx) return null;
+  return fromRouteIdx < toRouteIdx
+    ? currentRouteLatLngs.slice(fromRouteIdx, toRouteIdx + 1)
+    : currentRouteLatLngs.slice(toRouteIdx, fromRouteIdx + 1).reverse();
+}
+
+function animateAlongRoute(prevIdx, toIdx, duration){
+  if(prevIdx == null || toIdx == null || prevIdx === toIdx) return;
+  const path = getTravelPath(prevIdx, toIdx);
+  if(!path || path.length < 2) return;
 
   const marker = ensureTravelMarker();
   if(!map.hasLayer(marker)) marker.addTo(map);
@@ -770,27 +778,50 @@ function animateAlongRoute(fromIdx, toIdx, duration){
   requestAnimationFrame(step);
 }
 
-async function loadRoadRoute(stops, dayIdx, requestId){
+const routeCache = {}; // dayIdx -> resolved route data (or an in-flight Promise, to dedupe concurrent requests)
+
+async function fetchRouteData(stops){
   const coordStr = stops.map(s => `${s.lng},${s.lat}`).join(';');
   const url = `https://router.project-osrm.org/route/v1/driving/${coordStr}?overview=full&geometries=geojson`;
-  try{
-    const res = await fetch(url);
-    if(!res.ok) throw new Error('routing service error');
-    const data = await res.json();
-    if(requestId !== currentRequestId) return; // ผู้ใช้สลับวันไปแล้ว ผลลัพธ์นี้ไม่ทันสมัย
-    if(data.code !== 'Ok' || !data.routes || !data.routes[0]) throw new Error('no route found');
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('routing service error');
+  const data = await res.json();
+  if(data.code !== 'Ok' || !data.routes || !data.routes[0]) throw new Error('no route found');
+  const route = data.routes[0];
+  const latlngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
+  return {
+    latlngs,
+    legs: route.legs,
+    distance: route.distance,
+    duration: route.duration,
+    stopRouteIdx: stops.map(s => nearestRouteIndex(latlngs, s.lat, s.lng))
+  };
+}
 
-    const route = data.routes[0];
-    const latlngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
+function ensureRouteForDay(dayIdx){
+  if(!routeCache[dayIdx]){
+    routeCache[dayIdx] = fetchRouteData(DAYS[dayIdx].stops).catch(err => {
+      delete routeCache[dayIdx]; // ล้มเหลว เปิดให้ลองใหม่ได้ในครั้งถัดไป
+      throw err;
+    });
+  }
+  return routeCache[dayIdx];
+}
+
+async function applyRouteToMap(dayIdx, requestId){
+  const stops = DAYS[dayIdx].stops;
+  try{
+    const result = await ensureRouteForDay(dayIdx);
+    if(requestId !== currentRequestId || dayIdx !== activeDay) return; // ผู้ใช้สลับวันไปแล้ว ผลลัพธ์นี้ไม่ทันสมัย
 
     if(routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(latlngs, {color:'#0B4F6C', weight:4, opacity:0.85, lineJoin:'round'}).addTo(map);
+    routeLine = L.polyline(result.latlngs, {color:'#0B4F6C', weight:4, opacity:0.85, lineJoin:'round'}).addTo(map);
     map.fitBounds(routeLine.getBounds(), {padding:[36,36]});
 
-    currentRouteLatLngs = latlngs;
-    stopRouteIdx = stops.map(s => nearestRouteIndex(latlngs, s.lat, s.lng));
+    currentRouteLatLngs = result.latlngs;
+    stopRouteIdx = result.stopRouteIdx;
 
-    route.legs.forEach((leg, i)=>{
+    result.legs.forEach((leg, i)=>{
       const el = document.querySelector(`.leg-connector[data-leg="${i}"] .leg-text`);
       if(el){
         el.textContent = `${formatDistance(leg.distance)} · เวลาโดยประมาณ ${formatDuration(leg.duration)} (ถนนจริง)`;
@@ -799,9 +830,9 @@ async function loadRoadRoute(stops, dayIdx, requestId){
     });
 
     document.getElementById('mapCaption').textContent =
-      `เส้นทางถนนจริง ${DAYS[dayIdx].label} · รวม ${formatDistance(route.distance)} · เวลาโดยประมาณ ${formatDuration(route.duration)}`;
+      `เส้นทางถนนจริง ${DAYS[dayIdx].label} · รวม ${formatDistance(result.distance)} · เวลาโดยประมาณ ${formatDuration(result.duration)}`;
   } catch(err){
-    if(requestId !== currentRequestId) return;
+    if(requestId !== currentRequestId || dayIdx !== activeDay) return;
     stops.forEach((s,i)=>{
       if(i < stops.length - 1){
         const d = haversineKm(s.lat, s.lng, stops[i+1].lat, stops[i+1].lng);
@@ -855,8 +886,8 @@ function focusStop(i, fromTimeline, scrollTimeline){
   if(fromTimeline){
     if(moveMode === 'fly'){
       map.flyTo([s.lat,s.lng], 12, {duration:1.5});
-      if(prevIdx !== i && stopRouteIdx.length){
-        animateAlongRoute(stopRouteIdx[prevIdx], stopRouteIdx[i], 1500);
+      if(prevIdx !== i){
+        animateAlongRoute(prevIdx, i, 1500);
       }
     } else {
       pulseMarker(i);
@@ -994,6 +1025,9 @@ async function fetchWeatherForDay(dayIdx, lat, lng, dateStr){
     el.textContent = '🌡️ ไม่มีข้อมูลพยากรณ์สำหรับวันที่นี้';
   }
 }
+
+ensureRouteForDay(0);
+ensureRouteForDay(1);
 
 fetchWeatherForDay(0, 12.7748742, 99.9763563, '2026-07-13'); // ชะอำ/เพชรบุรี
 fetchWeatherForDay(1, 13.4075474, 99.9597567, '2026-07-14'); // อัมพวา/สมุทรสงคราม
