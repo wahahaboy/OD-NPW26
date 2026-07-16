@@ -85,22 +85,47 @@
   .day-tab{
     flex:1 1 240px;
     background:var(--paper);
-    border:none;
+    border:2px solid transparent;
     border-bottom:3px solid transparent;
     border-radius:14px 14px 8px 8px;
     padding:16px 20px;
     cursor:pointer;
     box-shadow:0 10px 24px -16px rgba(0,0,0,0.35);
-    transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+    transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease, background .18s ease, opacity .18s ease, filter .18s ease;
     text-align:left;
     font-family:inherit;
+    position:relative;
+    opacity:.6;
+    filter:saturate(.7);
   }
-  .day-tab:hover{transform:translateY(-2px);}
-  .day-tab.active{border-bottom-color:var(--coral);box-shadow:0 16px 30px -16px rgba(232,112,58,0.4);}
+  .day-tab:hover{transform:translateY(-2px); opacity:.85;}
+  .day-tab.active{
+    background:linear-gradient(150deg, #fff 0%, var(--paper) 65%);
+    border-color:rgba(232,112,58,0.55);
+    border-bottom:4px solid var(--coral);
+    box-shadow:0 22px 40px -18px rgba(232,112,58,0.55);
+    transform:translateY(-4px) scale(1.015);
+    opacity:1;
+    filter:saturate(1);
+  }
   .day-tab .d-eyebrow{
     font-family:'Space Mono',monospace;font-size:.68rem;color:var(--mangrove);letter-spacing:.1em;text-transform:uppercase;
+    display:flex;align-items:center;gap:6px;
+  }
+  .day-tab.active .d-eyebrow{color:var(--coral);font-weight:700;}
+  .day-tab.active .d-eyebrow::after{
+    content:'กำลังดูอยู่';
+    font-family:'Noto Sans Thai',sans-serif;
+    text-transform:none;
+    letter-spacing:0;
+    background:var(--coral);
+    color:#fff;
+    padding:1px 8px;
+    border-radius:999px;
+    font-size:.65rem;
   }
   .day-tab h3{font-size:1.15rem;margin:4px 0 6px;color:var(--sea-deep);font-weight:700;}
+  .day-tab.active h3{color:#08384d;}
   .dress{
     display:inline-flex;align-items:center;gap:6px;
     font-size:.78rem;color:var(--ink);opacity:.85;
@@ -178,6 +203,14 @@
   }
   .leaflet-popup-content{font-family:'Noto Sans Thai',sans-serif;font-size:.85rem;line-height:1.5;}
   .leaflet-popup-content b{color:var(--sea-deep);}
+  .leaflet-popup-content-wrapper{
+    background:rgba(251,247,236,0.6);
+    backdrop-filter:blur(2px);
+    box-shadow:0 10px 26px -12px rgba(0,0,0,0.45);
+  }
+  .leaflet-popup-tip{
+    background:rgba(251,247,236,0.6);
+  }
 
   .stop-nav{
     display:flex;
@@ -515,8 +548,8 @@ const DAYS = [
       {time:"10.00–11.00", title:"ศึกษาดูงานสิ่งแวดล้อม", place:"โครงการศึกษาวิจัยและพัฒนาสิ่งแวดล้อมแหลมผักเบี้ย", icon:"🌿", lat:13.0469607, lng:100.0843887, images:[IMG_LAEM1, IMG_LAEM2]},
       {time:"11.10–12.30", title:"รับประทานอาหารเที่ยง", place:"ครัวเข้าท่า คาเฟ่ ปากคลองหาดเจ้า", icon:"🍤", lat:13.0242681, lng:100.078549},
       {time:"13.30", title:"เดินทางถึงที่พัก", place:"Bay Window At Sea Cha-am Hotel", icon:"🏨", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]},
-      {time:"14.00–14.30", title:"อบรมสัมมนาเชิงวิชาการ", place:"Bay Window At Sea Cha-am Hotel", icon:"📋", lat:12.7748742, lng:99.9763563},
-      {time:"14.30–18.00", title:"ตามอัธยาศัย", place:"Bay Window At Sea Cha-am Hotel", icon:"🏖️", lat:12.7748742, lng:99.9763563},
+      {time:"14.00–14.30", title:"อบรมสัมมนาเชิงวิชาการ", place:"Bay Window At Sea Cha-am Hotel", icon:"📋", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]},
+      {time:"14.30–18.00", title:"ตามอัธยาศัย", place:"Bay Window At Sea Cha-am Hotel", icon:"🏖️", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]},
       {time:"18.00–22.00", title:"รับประทานอาหารเย็น", place:"Bay Window At Sea Cha-am Hotel", icon:"🍽️", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]}
     ]
   },
@@ -608,8 +641,8 @@ function renderDay(dayIdx){
         imgEl.addEventListener('click', (e)=>{ e.stopPropagation(); openModal(i); });
       });
     }
-    div.addEventListener('click', ()=> focusStop(i, true));
-    div.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); focusStop(i, true); }});
+    div.addEventListener('click', ()=> focusStop(i, true, true));
+    div.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); focusStop(i, true, true); }});
     tl.appendChild(div);
 
     if(i < stops.length - 1){
@@ -802,7 +835,7 @@ function openPopupWithAutoClose(marker){
   popupCloseTimer = setTimeout(()=> marker.closePopup(), 3000);
 }
 
-function focusStop(i, fromTimeline){
+function focusStop(i, fromTimeline, scrollTimeline){
   const prevIdx = currentStopIndex;
   currentStopIndex = i;
 
@@ -832,7 +865,9 @@ function focusStop(i, fromTimeline){
 
   openPopupWithAutoClose(markers[i]);
   updatePreview(i);
-  document.querySelectorAll('.stop')[i].scrollIntoView({behavior:'smooth', block:'nearest'});
+  if(scrollTimeline){
+    document.querySelectorAll('.stop')[i].scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
 }
 
 const zoomSwitch = document.getElementById('zoomSwitch');
