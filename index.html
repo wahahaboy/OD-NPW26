@@ -436,8 +436,8 @@
 <div class="hero">
   <div class="hero-inner">
     <div class="eyebrow">กำหนดการเดินทาง · Trip Itinerary</div>
-    <h1>พัทยา → เพชรบุรี → อัมพวา → พัทยา</h1>
-    <p class="sub">ทริป 2 วัน 1 คืน ศึกษาดูงานสิ่งแวดล้อมและวิถีชุมชนริมฝั่งอ่าวไทย แตะแต่ละช่วงเวลาเพื่อดูตำแหน่งบนแผนที่</p>
+    <h1>พัทยา → เพชรบุรี → สมุทรสงคราม → พัทยา</h1>
+    <p class="sub">ทริป 2 วัน 1 คืน : ศึกษาดูงานด้านสิ่งแวดล้อมและวิถีชุมชนริมฝั่งอ่าวไทย แตะแต่ละช่วงเวลาเพื่อดูตำแหน่งบนแผนที่</p>
     <div class="route-strip">
       <span class="stop-name">พัทยา</span>
       <span class="arrow">→</span>
@@ -545,11 +545,11 @@ const DAYS = [
     label: "Day 1",
     stops: [
       {time:"05.00", title:"ออกเดินทางจากพัทยา", place:"จุดนัดหมาย พัทยา", icon:"🚌", lat:12.923594, lng:100.8824376},
-      {time:"10.00–11.00", title:"ศึกษาดูงานสิ่งแวดล้อม", place:"โครงการศึกษาวิจัยและพัฒนาสิ่งแวดล้อมแหลมผักเบี้ย", icon:"🌿", lat:13.0469607, lng:100.0843887, images:[IMG_LAEM1, IMG_LAEM2]},
+      {time:"10.00–11.00", title:"ศึกษาดูงานด้านสิ่งแวดล้อม", place:"โครงการศึกษาวิจัยและพัฒนาสิ่งแวดล้อมแหลมผักเบี้ย", icon:"🌿", lat:13.0469607, lng:100.0843887, images:[IMG_LAEM1, IMG_LAEM2]},
       {time:"11.10–12.30", title:"รับประทานอาหารเที่ยง", place:"ครัวเข้าท่า คาเฟ่ ปากคลองหาดเจ้า", icon:"🍤", lat:13.0242681, lng:100.078549},
       {time:"13.30", title:"เดินทางถึงที่พัก", place:"Bay Window At Sea Cha-am Hotel", icon:"🏨", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]},
       {time:"14.00–14.30", title:"อบรมสัมมนาเชิงวิชาการ", place:"Bay Window At Sea Cha-am Hotel", icon:"📋", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]},
-      {time:"14.30–18.00", title:"ตามอัธยาศัย", place:"Bay Window At Sea Cha-am Hotel", icon:"🏖️", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]},
+      {time:"14.30–18.00", title:"พักผ่อนตามอัธยาศัย", place:"Bay Window At Sea Cha-am Hotel", icon:"🏖️", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]},
       {time:"18.00–22.00", title:"รับประทานอาหารเย็น", place:"Bay Window At Sea Cha-am Hotel", icon:"🍽️", lat:12.7748742, lng:99.9763563, images:[IMG_BAY1, IMG_BAY2]}
     ]
   },
@@ -568,6 +568,7 @@ const DAYS = [
 
 let activeDay = 0;
 let currentStopIndex = 0;
+let mapHasFocused = false; // false = แผนที่ยังแสดงภาพรวม ยังไม่เคยซูมเข้าจุดใดจุดหนึ่ง
 let moveMode = 'fly'; // 'fly' = ซูมเข้านุ่มนวล, 'pulse' = ไฟกระพริบ ไม่ซูม
 let map, routeLine, markers = [];
 let currentRouteLatLngs = null;
@@ -683,13 +684,11 @@ function renderDay(dayIdx){
   document.getElementById('mapCaption').textContent = `เส้นทาง ${DAYS[dayIdx].label} · ${stops.length} จุดแวะ · กำลังโหลดเส้นถนนจริง…`;
 
   currentStopIndex = 0;
+  mapHasFocused = false;
   currentRouteLatLngs = null;
   stopRouteIdx = [];
   if(travelMarker){ map.removeLayer(travelMarker); travelMarker = null; }
   updatePreview(0);
-  if(moveMode === 'fly'){
-    map.setView([stops[0].lat, stops[0].lng], 12);
-  }
 
   applyRouteToMap(dayIdx, ++currentRequestId);
 }
@@ -820,8 +819,8 @@ async function applyRouteToMap(dayIdx, requestId){
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(result.latlngs, {color:'#0B4F6C', weight:4, opacity:0.85, lineJoin:'round'}).addTo(map);
 
-    if(moveMode === 'fly' && currentStopIndex === 0){
-      map.setView([stops[0].lat, stops[0].lng], 12);
+    if(mapHasFocused){
+      // ผู้ใช้เริ่มไล่ดูสถานที่ไปแล้ว อย่าดึงกล้องกลับไปภาพรวม
     } else {
       map.fitBounds(routeLine.getBounds(), {padding:[36,36]});
     }
@@ -877,6 +876,7 @@ function openPopupWithAutoClose(marker){
 function focusStop(i, fromTimeline, scrollTimeline){
   const prevIdx = currentStopIndex;
   currentStopIndex = i;
+  mapHasFocused = true;
 
   document.querySelectorAll('.stop').forEach((el)=>{
     el.classList.toggle('active', Number(el.dataset.idx)===i);
@@ -929,6 +929,10 @@ document.getElementById('prevBtn').addEventListener('click', ()=>{
   focusStop(next, true);
 });
 document.getElementById('nextBtn').addEventListener('click', ()=>{
+  if(!mapHasFocused){
+    focusStop(0, true); // ครั้งแรก: ซูมเข้าจุดที่ 1 ก่อน ยังไม่เลื่อนไปจุดถัดไป
+    return;
+  }
   const stops = DAYS[activeDay].stops;
   const next = Math.min(stops.length - 1, currentStopIndex + 1);
   focusStop(next, true);
@@ -959,7 +963,7 @@ function renderModal(i){
 }
 
 function openModal(i){
-  currentStopIndex = i;
+  focusStop(i, true, false);
   renderModal(i);
   modalOverlay.classList.add('open');
   modalOverlay.setAttribute('aria-hidden', 'false');
@@ -975,18 +979,14 @@ document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeModal();
 
 document.getElementById('modalPrev').addEventListener('click', ()=>{
   const next = Math.max(0, currentStopIndex - 1);
-  currentStopIndex = next;
+  focusStop(next, true, false);
   renderModal(next);
-  focusStop(next, false);
-  updatePreview(next);
 });
 document.getElementById('modalNext').addEventListener('click', ()=>{
   const stops = DAYS[activeDay].stops;
   const next = Math.min(stops.length - 1, currentStopIndex + 1);
-  currentStopIndex = next;
+  focusStop(next, true, false);
   renderModal(next);
-  focusStop(next, false);
-  updatePreview(next);
 });
 
 function weatherCodeInfo(code){
