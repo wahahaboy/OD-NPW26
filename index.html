@@ -785,9 +785,8 @@ function animateAlongRoute(prevIdx, toIdx, duration){
     marker.setLatLng([a[0] + (b[0]-a[0])*segT, a[1] + (b[1]-a[1])*segT]);
     if(t < 1){
       requestAnimationFrame(step);
-    } else {
-      setTimeout(()=>{ if(token === travelAnimToken) marker.setOpacity(0); }, 400);
     }
+    // ถึงจุดหมายแล้วให้รถค้างอยู่ตรงนั้น ไม่ต้องซ่อน
   }
   requestAnimationFrame(step);
 }
@@ -878,17 +877,13 @@ function pulseMarker(i){
   setTimeout(()=> inner.classList.remove('pin-pulse'), 1500);
 }
 
-let popupCloseTimer = null;
-function openPopupWithAutoClose(marker){
-  if(popupCloseTimer) clearTimeout(popupCloseTimer);
+function openStopPopup(marker){
   marker.openPopup();
-  popupCloseTimer = setTimeout(()=> marker.closePopup(), 3000);
 }
 
 function focusStop(i, fromTimeline, scrollTimeline){
   const prevIdx = currentStopIndex;
   currentStopIndex = i;
-  mapHasFocused = true;
 
   document.querySelectorAll('.stop').forEach((el)=>{
     el.classList.toggle('active', Number(el.dataset.idx)===i);
@@ -905,6 +900,7 @@ function focusStop(i, fromTimeline, scrollTimeline){
 
   if(fromTimeline){
     if(moveMode === 'fly'){
+      mapHasFocused = true;
       map.flyTo([s.lat,s.lng], 12, {duration:1.5});
       if(prevIdx !== i){
         animateAlongRoute(prevIdx, i, 1500);
@@ -914,7 +910,7 @@ function focusStop(i, fromTimeline, scrollTimeline){
     }
   }
 
-  openPopupWithAutoClose(markers[i]);
+  openStopPopup(markers[i]);
   updatePreview(i);
   if(scrollTimeline){
     document.querySelectorAll('.stop')[i].scrollIntoView({behavior:'smooth', block:'nearest'});
@@ -932,17 +928,22 @@ function setZoomMode(on){
     : 'ปิด: หมุดกระพริบแทน ไม่ซูม เห็นภาพรวมทั้งเส้นทาง';
   if(!on && routeLine){
     map.fitBounds(routeLine.getBounds(), {padding:[36,36]});
+    mapHasFocused = false; // กล้องกลับไปภาพรวมแล้ว ครั้งต่อไปที่กด next/prev ให้เผยจุดปัจจุบันก่อน
   }
 }
 zoomSwitch.addEventListener('click', ()=> setZoomMode(!zoomSwitch.classList.contains('on')));
 
 document.getElementById('prevBtn').addEventListener('click', ()=>{
+  if(moveMode === 'fly' && !mapHasFocused){
+    focusStop(currentStopIndex, true); // เผยตำแหน่งปัจจุบันก่อน ยังไม่ถอยจุด
+    return;
+  }
   const next = Math.max(0, currentStopIndex - 1);
   focusStop(next, true);
 });
 document.getElementById('nextBtn').addEventListener('click', ()=>{
-  if(!mapHasFocused){
-    focusStop(0, true); // ครั้งแรก: ซูมเข้าจุดที่ 1 ก่อน ยังไม่เลื่อนไปจุดถัดไป
+  if(moveMode === 'fly' && !mapHasFocused){
+    focusStop(currentStopIndex, true); // เผยตำแหน่งปัจจุบันก่อน ยังไม่เลื่อนไปจุดถัดไป
     return;
   }
   const stops = DAYS[activeDay].stops;
